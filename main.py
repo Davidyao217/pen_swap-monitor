@@ -2,43 +2,54 @@ import os
 import asyncio
 from dotenv import load_dotenv
 import discord
-from reddit_monitor import fetch_new_submissions
-from filter import matches
-from db import init_db, is_new, mark_seen
-from discord_bot import PenMonitorBot
+import asyncpraw
 
 load_dotenv()
 
 SUBREDDIT = os.getenv("SUBREDDIT_NAME", "Pen_Swap")
-INTERVAL = int(os.getenv("CHECK_INTERVAL", 60))
-LIMIT = int(os.getenv("FETCH_LIMIT", 25))
+INTERVAL = int(os.getenv("CHECK_INTERVAL"))
+LIMIT = int(os.getenv("LIMIT"))
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
+FLAIR_NAME = os.getenv("FLAIR_NAME")
+QUERY      = f'flair_name:"{FLAIR_NAME}"'
 
-async def monitor_loop(bot: PenMonitorBot):
-    db = await init_db()
-    await bot.wait_until_ready()
 
-    while True:
-        try:
-            submissions = fetch_new_submissions(SUBREDDIT, limit=LIMIT)
-            for post in submissions:
-                if matches(post) and await is_new(db, post.id):
-                    await mark_seen(db, post.id)
-                    await bot.send_listing(
-                        title=post.title,
-                        url=f"https://reddit.com{post.permalink}",
-                        author=post.author.name if post.author else "[deleted]",
-                        timestamp=post.created_utc,
-                        image_url=post.url if hasattr(post, 'url') else None
-                    )
-        except Exception as e:
-            print(f"Error in monitor loop: {e}")
-        await asyncio.sleep(INTERVAL)
+async def fetch_and_send_new_posts(channel, reddit):
+    print("Fetching new posts")
+    try:
+        subreddit = await reddit.subreddit(SUBREDDIT)
+        async for submission in subreddit.search(
+            QUERY,
+            sort='new',
+            limit=LIMIT,
+            syntax='lucene'     # optional, makes sure quotes are honored
+        ):
+            print(submission.title)
+            await channel.send(submission.title)
+    except Exception as e:
+        print(f"Error fetching posts: {e}")
 
 async def main():
+    # Initialize Reddit instance
+    reddit = asyncpraw.Reddit(
+        client_id=os.getenv("REDDIT_CLIENT_ID"),
+        client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
+        user_agent=os.getenv("REDDIT_USER_AGENT")
+    )
     intents = discord.Intents.default()
-    bot = PenMonitorBot(intents=intents)
-    await bot.start(os.getenv("DISCORD_TOKEN"))
-    await monitor_loop(bot)
+    client = discord.Client(intents=intents)
+
+    @client.event
+    async def on_ready():
+        print(f'Logged in as {client.user}')
+        channel = client.get_channel(CHANNEL_ID)
+        while True:
+            print("Calling fetch_and_send_new_posts")
+            await fetch_and_send_new_posts(channel, reddit)
+            await asyncio.sleep(INTERVAL)
+
+    await client.start(DISCORD_TOKEN)
 
 if __name__ == "__main__":
     asyncio.run(main())
