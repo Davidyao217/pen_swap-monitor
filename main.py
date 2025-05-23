@@ -1,15 +1,7 @@
 import asyncio
-import sys
-import os
-from pathlib import Path
-
-# One-line path fix that works regardless of where you run it from
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-# Simple imports
-from src.clients.reddit_client import initialize_reddit_client
-from src.clients.discord_client import run_discord_bot
-from src.utils.db_manager import close_seen_posts_db
+from clients.reddit_client import initialize_reddit_client
+from clients.discord_client import run_discord_bot
+from utils.db_manager import close_seen_posts_db
 
 async def main():
     try:

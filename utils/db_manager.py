@@ -1,5 +1,5 @@
 import shelve
-from src.config import SEEN_POSTS_SHELVE_FILE
+from config import SEEN_POSTS_SHELVE_FILE
 
 # Global shelve database to avoid opening it repeatedly
 _seen_posts_db = None

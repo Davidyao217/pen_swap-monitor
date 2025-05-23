@@ -1,7 +1,7 @@
 import asyncio
 import discord
-from src.config import DISCORD_TOKEN, CHANNEL_ID, INTERVAL
-from src.clients.reddit_client import fetch_and_send_new_posts
+from config import DISCORD_TOKEN, CHANNEL_ID, INTERVAL
+from clients.reddit_client import fetch_and_send_new_posts
 
 async def run_discord_bot(reddit_client):
     """Initialize and run the Discord bot."""

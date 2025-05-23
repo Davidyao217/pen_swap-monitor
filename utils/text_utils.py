@@ -21,19 +21,22 @@ def fuzzy_match(model: str, text: str, threshold: int = 80) -> bool:
     
     return fuzz.partial_ratio(model, text) >= threshold
 
-def check_body_for_pen_models(post_body: str, pen_models_to_find: list[str]) -> list[str]:
-    if not post_body or not pen_models_to_find:
+def check_post_for_pen_models(submission_text: str, pen_models_to_find: list[str]) -> list[str]:
+    if not submission_text or not pen_models_to_find:
         return []
 
-    normalized_body = normalize_text(post_body)
+    normalized_body = normalize_text(submission_text)
     found_models = []
     
     for model in pen_models_to_find:
         normalized_model = normalize_text(model)
         
         if normalized_model in normalized_body:
+            # print how the match was found
+            print(f"Exact match found for {model} in {submission_text}")
             found_models.append(model)
         elif fuzzy_match(normalized_model, normalized_body):
+            print(f"Fuzzy match found for {model} in {submission_text}")
             found_models.append(model)
     
     return found_models 
