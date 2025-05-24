@@ -1,6 +1,5 @@
 import re
 from thefuzz import fuzz
-from __future__ import annotations # Optional, but good practice
 from typing import List # Import List for type hinting
 
 def normalize_text(text: str) -> str:
