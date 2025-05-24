@@ -36,7 +36,25 @@ def mark_post_as_seen(post_id: str):
     try:
         seen_db = get_seen_posts_db()
         if seen_db is not None:
+            # Initialize or retrieve the ordered list of post IDs
+            if '__post_order__' not in seen_db:
+                seen_db['__post_order__'] = []
+
+            post_order = seen_db['__post_order__']
+
+            # Add new post to the shelf and the ordered list
             seen_db[post_id] = True
+            post_order.append(post_id)
+
+            # If the list exceeds 100, remove the oldest
+            if len(post_order) > 100:
+                oldest_post_id = post_order.pop(0) # Remove from the beginning
+                if oldest_post_id in seen_db:
+                    del seen_db[oldest_post_id]
+            
+            # Update the ordered list in the shelf
+            seen_db['__post_order__'] = post_order
+            
             # Ensure changes are written to disk
             seen_db.sync()
     except Exception as e:

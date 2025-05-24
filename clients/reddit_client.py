@@ -45,14 +45,17 @@ async def fetch_and_send_new_posts(channel, reddit):
             # Print separation for logging clarity
             print("\n\n")
             print("-" * 100)
-            print(f"Processing post: {submission.id}")
+            print(f"Processing post: https://www.reddit.com{submission.permalink}")
             print("-" * 100)
 
             # Skip already processed posts
             if is_post_seen(submission.id):
                 print(f"Skipping already seen post: {submission.id} - {submission.title}")
                 continue
-            
+            else:
+                mark_post_as_seen(submission.id)
+                print(f"Marked post as seen: {submission.id}")
+
             # Combine title and body for analysis
             combined_text = f"{submission.title} {submission.selftext}"
             
@@ -73,9 +76,8 @@ async def fetch_and_send_new_posts(channel, reddit):
                 message += f"https://www.reddit.com{submission.permalink}"
                 
                 await channel.send(message)
-                mark_post_as_seen(submission.id)
-                print(f"Marked post as seen: {submission.id}")
             else:
                 print(f"No watched models found in post: {submission.title}")
+
     except Exception as e:
         print(f"Error fetching posts: {e}") 

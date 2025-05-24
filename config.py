@@ -4,12 +4,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Reddit Configuration
-SUBREDDIT = os.getenv("SUBREDDIT_NAME", "Pen_Swap")
-INTERVAL = int(os.getenv("CHECK_INTERVAL"))
-LIMIT = int(os.getenv("LIMIT"))
+SUBREDDIT = "Pen_Swap"  # The subreddit to monitor
+INTERVAL = 60  # Check interval in seconds (5 minutes)
+LIMIT = 10  # Number of posts to fetch each check
 FLAIR_NAME = "WTS-OPEN"
 QUERY = f'flair_name:"{FLAIR_NAME}"'
-PEN_MODELS_TO_WATCH = ["Lamy Safari", "Pilot Vanishing Point", "TWSBI Eco"]
+PEN_MODELS_TO_WATCH = ["Lamy Safari", "Pilot Vanishing Point", "TWSBI Eco", "Metropolitan", "Opus 88", "Custom 823", "m200", "2000", "lamy 2k", "lamy 2000", "decimo", "opus 88", "pro gear"]
 
 # Discord Configuration
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")

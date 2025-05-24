@@ -10,7 +10,7 @@ def normalize_text(text: str) -> str:
     result = re.sub(r'\s+', ' ', result).strip()
     return result
 
-def fuzzy_match(model: str, text: str, threshold: int = 80) -> bool:
+def fuzzy_match(model: str, text: str, threshold: int = 85) -> bool:
     if not model or not text:
         return False
     

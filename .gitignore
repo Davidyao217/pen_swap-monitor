@@ -1,3 +1,6 @@
 .env
 __pycache__
 .DS_Store
+seen_posts_shelf
+local-fountain-pen-bot-key-5-23.pem
+output.txt
