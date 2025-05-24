@@ -1,0 +1,8 @@
+.git
+__pycache__/
+venv/
+.DS_Store
+output.txt
+Dockerfile
+.dockerignore
+seen_posts_shelf.* 

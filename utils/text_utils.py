@@ -1,5 +1,7 @@
 import re
 from thefuzz import fuzz
+from __future__ import annotations # Optional, but good practice
+from typing import List # Import List for type hinting
 
 def normalize_text(text: str) -> str:
     """Normalize text by converting to lowercase, removing punctuation, and standardizing whitespace."""
@@ -21,7 +23,7 @@ def fuzzy_match(model: str, text: str, threshold: int = 85) -> bool:
     
     return fuzz.partial_ratio(model, text) >= threshold
 
-def check_post_for_pen_models(submission_text: str, pen_models_to_find: list[str]) -> list[str]:
+def check_post_for_pen_models(submission_text: str, pen_models_to_find: List[str]) -> List[str]:
     if not submission_text or not pen_models_to_find:
         return []
 
