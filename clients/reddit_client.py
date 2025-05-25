@@ -10,7 +10,7 @@ from config import (
     LIMIT,
     PEN_MODELS_TO_WATCH
 )
-from utils.text_utils import check_post_for_pen_models
+from utils.text_utils import check_post_for_pen_models, format_discord_message
 from utils.db_manager import is_post_seen, mark_post_as_seen
 
 # ------------------------------------------------------------------
@@ -59,11 +59,6 @@ async def fetch_and_send_new_posts(channel, reddit):
             # Combine title and body for analysis
             combined_text = f"{submission.title} {submission.selftext}"
             
-            # Print the post content with proper formatting
-            print(f"    {submission.title}")
-            print("\n    " + submission.selftext.replace("\n", "\n    "))
-            print("\n\n")
-
             # Check if the post contains any watched pen models
             found_pen_models = check_post_for_pen_models(combined_text, PEN_MODELS_TO_WATCH)
 
@@ -71,10 +66,13 @@ async def fetch_and_send_new_posts(channel, reddit):
                 # If models are found, prepare and send Discord message
                 print(f"Found models: {', '.join(found_pen_models)}")
                 
-                message = f"**{submission.title}**\n"
-                message += f"Found: {', '.join(found_pen_models)}\n"
-                message += f"https://www.reddit.com{submission.permalink}"
-                
+                message = format_discord_message(
+                    submission_title=submission.title,
+                    combined_text=combined_text,
+                    found_pen_models=found_pen_models,
+                    permalink=submission.permalink
+                )
+                print(message)
                 await channel.send(message)
             else:
                 print(f"No watched models found in post: {submission.title}")

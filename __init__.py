@@ -8,5 +8,5 @@ from .config import (
 )
 
 # Import key functionality
-from .utils import normalize_text, check_body_for_pen_models, is_post_seen, mark_post_as_seen, close_seen_posts_db
+from .utils import normalize_text, check_post_for_pen_models, is_post_seen, mark_post_as_seen, close_seen_posts_db
 from .clients import initialize_reddit_client, run_discord_bot, fetch_and_send_new_posts 
