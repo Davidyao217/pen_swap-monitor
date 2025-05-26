@@ -43,7 +43,7 @@ def check_post_for_pen_models(submission_text: str, pen_models_to_find: List[str
     
     return found_models 
 
-def format_bolded_excerpt(text: str, terms_to_bold: list[str]) -> str:
+def format_bolded_excerpt(text: str, terms_to_bold: List[str]) -> str:
     """
     Formats a text excerpt by bolding specified terms and merging overlapping bolded segments.
 
@@ -258,7 +258,7 @@ def find_all_match_positions(model: str, text: str, threshold: int = 90):
     
     return matches
 
-def format_discord_message(submission_title: str, combined_text: str, found_pen_models: list[str], permalink: str) -> str:
+def format_discord_message(submission_title: str, combined_text: str, found_pen_models: List[str], permalink: str) -> str:
     message_parts = ["=" * 30]  # Visual separator to distinguish posts
 
     # Strip existing bold formatting from the text to avoid confusion
