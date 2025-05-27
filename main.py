@@ -1,20 +1,28 @@
 import asyncio
 from clients.reddit_client import initialize_reddit_client
 from clients.discord_client import run_discord_bot
-from utils.db_manager import close_seen_posts_db
-from config import PEN_MODELS_TO_WATCH
+from utils.text_utils import get_monitoring_list
+
 async def main():
+    """Main function to run both Reddit and Discord clients."""
+    print("Starting Fountain Pen Bot...")
+    
+    # Print current monitoring status
+    monitoring_list = get_monitoring_list()
+    print(f"Monitoring {len(monitoring_list)} search terms")
+    if monitoring_list:
+        print("Current monitoring terms:", monitoring_list[:5], "..." if len(monitoring_list) > 5 else "")
+    
     try:
-        # Initialize Reddit instance
-        # print the models to watch
-        print(PEN_MODELS_TO_WATCH)
+        # Initialize Reddit client
         reddit_client = await initialize_reddit_client()
+        print("✅ Reddit client initialized")
         
-        # Run Discord bot
+        # Run Discord bot with Reddit monitoring
         await run_discord_bot(reddit_client)
-    finally:
-        # Close database connection
-        close_seen_posts_db()
+    
+    except Exception as e:
+        print(f"❌ Error starting bot: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
