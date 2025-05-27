@@ -1,10 +1,12 @@
 import asyncio
+import time
 from clients.reddit_client import initialize_reddit_client
 from clients.discord_client import run_discord_bot
 from utils.text_utils import get_monitoring_list
 
 async def main():
     """Main function to run both Reddit and Discord clients."""
+    start_time = time.time()
     print("Starting Fountain Pen Bot...")
     
     # Print current monitoring status
@@ -15,10 +17,13 @@ async def main():
     
     try:
         # Initialize Reddit client
+        print("Initializing Reddit client...")
         reddit_client = await initialize_reddit_client()
-        print("✅ Reddit client initialized")
+        reddit_time = time.time()
+        print(f"✅ Reddit API connection established in {reddit_time - start_time:.2f}s")
         
         # Run Discord bot with Reddit monitoring
+        print("Starting Discord bot (this may take a moment)...")
         await run_discord_bot(reddit_client)
     
     except Exception as e:

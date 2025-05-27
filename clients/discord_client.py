@@ -6,30 +6,71 @@ from clients.reddit_client import fetch_and_send_new_posts, force_search_recent_
 import shelve
 import os
 from datetime import datetime
-from utils.text_utils import (
-    find_matching_pen_names, 
-    get_all_search_terms_for_pens,
-    add_new_pen_mapping,
-    add_aliases_to_pen,
-    remove_aliases_from_pen,
-    remove_pen_completely,
-    pen_names_map,
-    get_monitoring_list,
-    add_formal_pens_to_monitoring,
-    remove_formal_pens_from_monitoring,
-    clear_all_monitoring,
-    get_all_monitoring_search_terms,
-    format_discord_message,
-    reload_pen_aliases_from_file,
-    reload_monitoring_from_file,
-    validate_pen_name_input,
-    validate_aliases_input,
-    normalize_text,
-    save_pen_aliases_to_file,
-    get_aliases_file_path
-)
-from utils.db_manager import get_seen_posts_count, get_recent_posts_count, repair_database
+import sys
 from thefuzz import fuzz
+
+# Implement lazy loading - import these only when needed
+# instead of at startup
+_text_utils_loaded = False
+_db_manager_loaded = False
+_pen_names_map = None
+_fuzz = None
+
+# Lazy loading functions
+def load_text_utils():
+    global _text_utils_loaded, find_matching_pen_names, get_all_search_terms_for_pens
+    global add_new_pen_mapping, add_aliases_to_pen, remove_aliases_from_pen
+    global remove_pen_completely, _pen_names_map, get_monitoring_list
+    global add_formal_pens_to_monitoring, remove_formal_pens_from_monitoring
+    global clear_all_monitoring, get_all_monitoring_search_terms
+    global format_discord_message, reload_pen_aliases_from_file
+    global reload_monitoring_from_file, validate_pen_name_input
+    global validate_aliases_input, normalize_text, save_pen_aliases_to_file
+    global get_aliases_file_path
+    
+    if not _text_utils_loaded:
+        print("Loading text utilities...")
+        from utils.text_utils import (
+            find_matching_pen_names, 
+            get_all_search_terms_for_pens,
+            add_new_pen_mapping,
+            add_aliases_to_pen,
+            remove_aliases_from_pen,
+            remove_pen_completely,
+            pen_names_map as loaded_pen_names_map,
+            get_monitoring_list,
+            add_formal_pens_to_monitoring,
+            remove_formal_pens_from_monitoring,
+            clear_all_monitoring,
+            get_all_monitoring_search_terms,
+            format_discord_message,
+            reload_pen_aliases_from_file,
+            reload_monitoring_from_file,
+            validate_pen_name_input,
+            validate_aliases_input,
+            normalize_text,
+            save_pen_aliases_to_file,
+            get_aliases_file_path
+        )
+        global pen_names_map
+        pen_names_map = loaded_pen_names_map
+        _pen_names_map = loaded_pen_names_map
+        _text_utils_loaded = True
+
+def load_db_manager():
+    global _db_manager_loaded, get_seen_posts_count, get_recent_posts_count, repair_database
+    
+    if not _db_manager_loaded:
+        print("Loading database manager...")
+        from utils.db_manager import get_seen_posts_count, get_recent_posts_count, repair_database
+        _db_manager_loaded = True
+
+def load_fuzz():
+    global _fuzz
+    if not _fuzz:
+        print("Loading fuzzy matching...")
+        from thefuzz import fuzz
+        _fuzz = fuzz
 
 class PenSearchBot(commands.Bot):
     def __init__(self):
@@ -40,17 +81,35 @@ class PenSearchBot(commands.Bot):
         self.reddit_client = None
         self.monitoring_channel = None
         self.start_time = datetime.now()
+        self.commands_synced = False
 
     async def setup_hook(self):
         """Called when the bot is starting up."""
-        await self.tree.sync()
-        print(f"Synced {len(self.tree.get_commands())} slash commands")
+        # Defer syncing commands until absolutely necessary
+        pass
+
+    async def sync_commands(self):
+        """Sync commands only when needed"""
+        if not self.commands_synced:
+            print("Syncing commands...")
+            start_time = datetime.now()
+            await self.tree.sync()
+            duration = (datetime.now() - start_time).total_seconds()
+            print(f"Synced {len(self.tree.get_commands())} slash commands in {duration:.2f}s")
+            self.commands_synced = True
 
     async def on_ready(self):
         print(f'Logged in as {self.user}')
+        
+        # Load the monitoring channel
         self.monitoring_channel = self.get_channel(CHANNEL_ID)
         if self.monitoring_channel:
             print(f"Found monitoring channel: {self.monitoring_channel.name}")
+            
+            # Start syncing commands in the background
+            asyncio.create_task(self.sync_commands())
+            
+            # Start monitoring
             if not self.reddit_monitor.is_running():
                 self.reddit_monitor.start()
         else:
@@ -64,6 +123,7 @@ class PenSearchBot(commands.Bot):
     async def reddit_monitor(self):
         """Monitor Reddit for new posts."""
         if self.monitoring_channel and self.reddit_client:
+            load_text_utils()  # Ensure text utilities are loaded
             print("Calling fetch_and_send_new_posts")
             await fetch_and_send_new_posts(self.monitoring_channel, self.reddit_client)
 
@@ -92,6 +152,10 @@ bot = PenSearchBot()
 @bot.command(name="info")
 async def info_command(ctx):
     """Show bot commands and statistics."""
+    
+    # Load dependencies when needed
+    load_text_utils()
+    load_db_manager()
     
     # Get statistics
     monitoring_list = get_monitoring_list()
@@ -143,9 +207,8 @@ async def info_command(ctx):
         "`/force_search` - Search recent posts now\n\n"
         
         "**🔄 System**\n"
-        "`/reload_aliases` - Reload pen database\n"
-        "`/reload_monitoring` - Reload monitoring list\n"
-        "`/repair_database` - Fix counter inconsistencies\n"
+        "`/reload` - Reload data from files (aliases, monitoring)\n"
+        "`/maintenance` - Perform system maintenance (check map, repair database)\n"
         "`!info` - Show this info message"
     )
     
@@ -173,6 +236,9 @@ async def info_command(ctx):
 async def add_aliases(interaction: discord.Interaction, pen_name: str, new_aliases: str):
     """Add new aliases to an existing pen in the database."""
     await interaction.response.defer()
+    
+    # Load required modules
+    load_text_utils()
     
     # Validate pen name input
     is_valid, error_msg = validate_pen_name_input(pen_name)
@@ -237,6 +303,9 @@ async def add_aliases(interaction: discord.Interaction, pen_name: str, new_alias
 async def add_pen(interaction: discord.Interaction, formal_name: str, aliases: str = ""):
     """Add a completely new pen to the database with its aliases."""
     await interaction.response.defer()
+    
+    # Load required modules
+    load_text_utils()
     
     # Validate formal name input
     is_valid, error_msg = validate_pen_name_input(formal_name)
@@ -322,6 +391,9 @@ async def remove_aliases(interaction: discord.Interaction, pen_name: str, aliase
     """Remove aliases from an existing pen in the database."""
     await interaction.response.defer()
     
+    # Load dependencies
+    load_text_utils()
+    
     # Parse aliases to remove
     aliases_list = [alias.strip().lower() for alias in aliases_to_remove.split(',') if alias.strip()]
     
@@ -381,8 +453,11 @@ async def remove_aliases(interaction: discord.Interaction, pen_name: str, aliase
 
 @bot.tree.command(name="list_aliases", description="List all fountain pens and their aliases")
 async def list_aliases(interaction: discord.Interaction):
-    """List all fountain pens in the database with their aliases."""
+    """List all fountain pens and their aliases."""
     await interaction.response.defer()
+    
+    # Load dependencies
+    load_text_utils()
     
     # Read directly from the file instead of relying on the map data structure
     from utils.text_utils import get_aliases_file_path
@@ -459,8 +534,11 @@ async def list_aliases(interaction: discord.Interaction):
 
 @bot.tree.command(name="add_monitoring", description="Add pens to the monitoring list")
 async def add_monitoring(interaction: discord.Interaction, pen_names: str):
-    """Add pens to the current monitoring list."""
+    """Add pens to the monitoring list."""
     await interaction.response.defer()
+    
+    # Load dependencies
+    load_text_utils()
     
     # Parse pen names (comma-separated)
     input_names = [name.strip() for name in pen_names.split(',') if name.strip()]
@@ -533,8 +611,11 @@ async def add_monitoring(interaction: discord.Interaction, pen_names: str):
 
 @bot.tree.command(name="remove_monitoring", description="Remove pens from the monitoring list")
 async def remove_monitoring(interaction: discord.Interaction, pen_names: str):
-    """Remove pens from the monitoring list. Use 'ALL' to remove all monitoring."""
+    """Remove pens from the monitoring list."""
     await interaction.response.defer()
+    
+    # Load dependencies
+    load_text_utils()
     
     # Handle special case: remove ALL monitoring
     if pen_names.strip().upper() == "ALL":
@@ -640,6 +721,11 @@ async def remove_monitoring(interaction: discord.Interaction, pen_names: str):
 @bot.tree.command(name="show_monitoring", description="Show which pens are currently being monitored")
 async def show_monitoring(interaction: discord.Interaction):
     """Show which pens are currently being monitored."""
+    await interaction.response.defer()
+    
+    # Load dependencies
+    load_text_utils()
+    
     monitoring_list = get_monitoring_list()
     
     if not monitoring_list:
@@ -676,8 +762,11 @@ async def show_monitoring(interaction: discord.Interaction):
 
 @bot.tree.command(name="remove_pen", description="Completely remove a fountain pen from the database")
 async def remove_pen(interaction: discord.Interaction, pen_name: str):
-    """Remove a pen completely from the database (formal name and all aliases)."""
+    """Completely remove a fountain pen from the database."""
     await interaction.response.defer()
+    
+    # Load dependencies
+    load_text_utils()
     
     # Find the formal pen name
     matches = find_matching_pen_names(pen_name, max_results=1)
@@ -739,8 +828,11 @@ async def remove_pen(interaction: discord.Interaction, pen_name: str):
 
 @bot.tree.command(name="force_search", description="Force search recent posts immediately (max 50)")
 async def force_search(interaction: discord.Interaction, limit: int = 10):
-    """Force search recent posts without waiting for monitoring cycle."""
+    """Force search recent posts immediately without checking seen status."""
     await interaction.response.defer()
+    
+    # Load required modules
+    load_text_utils()
     
     # Validate limit
     if limit < 1 or limit > 50:
@@ -870,479 +962,119 @@ async def force_search(interaction: discord.Interaction, limit: int = 10):
         )
         await interaction.followup.send(embed=embed)
 
-@bot.tree.command(name="reload_aliases", description="Reload pen aliases from the pen_aliases.txt file")
-async def reload_aliases(interaction: discord.Interaction):
-    """Reload pen aliases from the file, updating in-memory data."""
+@bot.tree.command(name="maintenance", description="Perform system maintenance (check map, repair database)")
+async def maintenance(interaction: discord.Interaction, operation: str = "all"):
+    """Combined maintenance command for system operations."""
     await interaction.response.defer()
     
-    success, message = reload_pen_aliases_from_file()
+    # Load dependencies
+    load_text_utils()
+    load_db_manager()
     
-    if success:
-        embed = discord.Embed(
-            title="🔄 Aliases Reloaded",
-            description=message,
-            color=discord.Color.green()
-        )
-        embed.add_field(
-            name="File Location",
-            value="`pen_aliases.txt`",
-            inline=False
-        )
-        embed.add_field(
-            name="Current Database Size",
-            value=f"{len(pen_names_map.keys())} pens",
-            inline=False
-        )
-    else:
-        embed = discord.Embed(
-            title="❌ Reload Failed",
-            description=message,
-            color=discord.Color.red()
-        )
+    embed = discord.Embed(
+        title="🔧 System Maintenance",
+        color=discord.Color.blue()
+    )
     
-    await interaction.followup.send(embed=embed)
-
-@bot.tree.command(name="reload_monitoring", description="Reload monitoring list from the monitoring_list.txt file")
-async def reload_monitoring(interaction: discord.Interaction):
-    """Reload monitoring list from the file, updating in-memory data."""
-    await interaction.response.defer()
-    
-    success, message = reload_monitoring_from_file()
-    
-    if success:
-        current_monitoring = get_monitoring_list()
-        total_search_terms = len(get_all_monitoring_search_terms())
+    # Check pen map if requested
+    if operation.lower() in ["all", "map"]:
+        # Force validation of the map
+        issues_fixed = pen_names_map.validate()
         
-        embed = discord.Embed(
-            title="🔄 Monitoring Reloaded",
-            description=message,
-            color=discord.Color.green()
-        )
-        embed.add_field(
-            name="File Location",
-            value="`monitoring_list.txt`",
-            inline=False
-        )
-        embed.add_field(
-            name="Current Monitoring",
-            value=f"{len(current_monitoring)} pens → {total_search_terms} search terms",
-            inline=False
-        )
-        
-        if current_monitoring:
-            pen_list = '\n'.join([f"• {pen}" for pen in sorted(current_monitoring[:5])])
-            if len(current_monitoring) > 5:
-                pen_list += f"\n• ... and {len(current_monitoring) - 5} more"
+        if issues_fixed:
             embed.add_field(
-                name="Monitored Pens",
-                value=pen_list,
+                name="🔧 Map Repair",
+                value=f"Fixed {len(issues_fixed)} consistency issues in the pen map",
                 inline=False
             )
-    else:
-        embed = discord.Embed(
-            title="❌ Reload Failed",
-            description=message,
-            color=discord.Color.red()
-        )
-    
-    await interaction.followup.send(embed=embed)
-
-@bot.tree.command(name="check_alias", description="Check which pen model an alias maps to")
-async def check_alias(interaction: discord.Interaction, alias: str):
-    """Look up which formal pen name an alias maps to."""
-    await interaction.response.defer()
-    
-    if not alias or not alias.strip():
-        embed = discord.Embed(
-            title="❌ Invalid Input",
-            description="Please provide an alias to check",
-            color=discord.Color.red()
-        )
-        await interaction.followup.send(embed=embed)
-        return
-    
-    alias = alias.strip().lower()
-    
-    # First try direct lookup in the many-to-one mapping
-    direct_match = None
-    for formal_name, aliases in pen_names_map._one_to_many.items():
-        if alias in aliases:
-            direct_match = formal_name
-            break
-    
-    if direct_match:
-        # Found exact match
-        all_aliases = sorted(list(pen_names_map.get_values(direct_match)))
-        
-        embed = discord.Embed(
-            title="✅ Alias Match Found",
-            description=f"The alias `{alias}` maps to:",
-            color=discord.Color.green()
-        )
-        embed.add_field(
-            name="Formal Pen Name",
-            value=f"**{direct_match}**",
-            inline=False
-        )
-        embed.add_field(
-            name="All Aliases",
-            value=', '.join(all_aliases),
-            inline=False
-        )
-    else:
-        # No exact match, try fuzzy matching to suggest alternatives
-        matches = find_matching_pen_names(alias, max_results=3, threshold=75)
-        
-        if matches:
-            embed = discord.Embed(
-                title="❓ No Exact Match Found",
-                description=f"The alias `{alias}` doesn't map to any pen directly, but here are some similar pens:",
-                color=discord.Color.orange()
+        else:
+            embed.add_field(
+                name="✅ Map Check",
+                value="The pen map is consistent with no issues found",
+                inline=False
             )
             
-            for i, match in enumerate(matches, 1):
-                all_aliases = sorted(list(pen_names_map.get_values(match)))
-                embed.add_field(
-                    name=f"Suggestion {i}: {match}",
-                    value=f"Aliases: {', '.join(all_aliases)}",
-                    inline=False
-                )
-        else:
-            embed = discord.Embed(
-                title="❌ No Match Found",
-                description=f"The alias `{alias}` doesn't map to any pen in the database.",
-                color=discord.Color.red()
+        # Map statistics
+        embed.add_field(
+            name="Map Statistics",
+            value=f"• Formal pen names: {len(pen_names_map._one_to_many)}\n• Total aliases: {len(pen_names_map._many_to_one)}",
+            inline=True
+        )
+    
+    # Repair database if requested
+    if operation.lower() in ["all", "database"]:
+        # Run the repair function
+        report = repair_database()
+        
+        # Original state
+        embed.add_field(
+            name="📊 Database Repair",
+            value=f"**Original:** {report['original_lifetime']} lifetime, {report['original_recent']} recent\n"
+                  f"**New:** {report['new_lifetime']} lifetime, {report['new_recent']} recent",
+            inline=False
+        )
+        
+        # Changes made
+        changes = []
+        if report.get("fixed_lifetime_count"):
+            changes.append("✓ Fixed inconsistent lifetime count")
+        if report.get("fixed_post_order"):
+            changes.append("✓ Fixed post order list")
+        if report.get("removed_duplicates", 0) > 0:
+            changes.append(f"✓ Removed {report['removed_duplicates']} duplicate entries")
+        if "error" in report:
+            changes.append(f"❌ Error occurred: {report['error']}")
+        if not changes:
+            changes.append("✓ No issues found, database is healthy")
+            
+        if changes:
+            embed.add_field(
+                name="🔍 Changes Made",
+                value="\n".join(changes),
+                inline=False
             )
     
     await interaction.followup.send(embed=embed)
 
-@bot.tree.command(name="debug_match", description="Debug how a search term matches to pen models")
-async def debug_match(interaction: discord.Interaction, search_term: str):
-    """Show detailed information about how a search term matches to pen models."""
+@bot.tree.command(name="reload", description="Reload data from files (aliases, monitoring)")
+async def reload(interaction: discord.Interaction, data_type: str = "all"):
+    """Combined reload command for reloading data from files."""
     await interaction.response.defer()
     
-    if not search_term or not search_term.strip():
-        embed = discord.Embed(
-            title="❌ Invalid Input",
-            description="Please provide a search term to debug",
-            color=discord.Color.red()
-        )
-        await interaction.followup.send(embed=embed)
-        return
+    # Load dependencies
+    load_text_utils()
     
-    search_term = search_term.strip()
-    search_term_lower = search_term.lower()
-    search_term_normalized = normalize_text(search_term)
-    
-    # Get the top matches using our improved algorithm
-    matches = find_matching_pen_names(search_term, max_results=5, threshold=60)
-    
-    if not matches:
-        embed = discord.Embed(
-            title="❌ No Matches Found",
-            description=f"No pens matched `{search_term}` with a score above the threshold.",
-            color=discord.Color.red()
-        )
-        await interaction.followup.send(embed=embed)
-        return
-    
-    # Collect details about each match for debugging
-    match_details = []
-    
-    for formal_name in matches:
-        # Check different matching criteria
-        formal_name_lower = formal_name.lower()
-        formal_name_normalized = normalize_text(formal_name)
-        
-        # Get all aliases
-        aliases = list(pen_names_map.get_values(formal_name))
-        
-        # Determine match type and score
-        match_type = "unknown"
-        match_score = 0
-        matching_alias = None
-        
-        # 1. Exact case-insensitive match with formal name
-        if formal_name_lower == search_term_lower:
-            match_type = "exact_formal"
-            match_score = 100
-        
-        # 2. Exact case-insensitive match with any alias
-        elif any(alias.lower() == search_term_lower for alias in aliases):
-            match_type = "exact_alias"
-            match_score = 99
-            matching_alias = next(alias for alias in aliases if alias.lower() == search_term_lower)
-        
-        # 3. Normalized exact match with formal name
-        elif formal_name_normalized == search_term_normalized:
-            match_type = "normalized_formal"
-            match_score = 98
-        
-        # 4. Normalized exact match with any alias
-        elif any(normalize_text(alias) == search_term_normalized for alias in aliases):
-            match_type = "normalized_alias"
-            match_score = 97
-            matching_alias = next(alias for alias in aliases if normalize_text(alias) == search_term_normalized)
-        
-        # 5. Exact word match in alias
-        elif any(search_term_normalized in normalize_text(alias).split() for alias in aliases):
-            match_type = "exact_word_match"
-            match_score = 96
-            matching_alias = next(alias for alias in aliases if search_term_normalized in normalize_text(alias).split())
-        
-        # 6. Exact word match in formal name
-        elif search_term_normalized in formal_name_normalized.split():
-            match_type = "formal_word_match"
-            match_score = 95
-        
-        # 7. Must be fuzzy match
-        else:
-            match_type = "fuzzy"
-            # Get best fuzzy score across all aliases
-            for alias in aliases:
-                alias_normalized = normalize_text(alias)
-                ratio_score = fuzz.ratio(search_term_normalized, alias_normalized)
-                partial_score = fuzz.partial_ratio(search_term_normalized, alias_normalized)
-                score = max(ratio_score, partial_score)
-                
-                if score > match_score:
-                    match_score = score
-                    matching_alias = alias
-            
-            # Also check formal name
-            ratio_score = fuzz.ratio(search_term_normalized, formal_name_normalized)
-            partial_score = fuzz.partial_ratio(search_term_normalized, formal_name_normalized)
-            score = max(ratio_score, partial_score)
-            
-            if score > match_score:
-                match_score = score
-                matching_alias = None  # Match is with formal name
-        
-        match_details.append({
-            "formal_name": formal_name,
-            "match_type": match_type,
-            "match_score": match_score,
-            "matching_alias": matching_alias,
-            "aliases": aliases
-        })
-    
-    # Create embed with detailed match information
     embed = discord.Embed(
-        title="🔍 Match Debugging Results",
-        description=f"How `{search_term}` matches to pen models:",
+        title="🔄 Reload Data",
         color=discord.Color.blue()
     )
     
-    for i, detail in enumerate(match_details, 1):
-        match_description = [
-            f"**Score:** {detail['match_score']}",
-            f"**Match Type:** {detail['match_type']}"
-        ]
-        
-        if detail['matching_alias']:
-            match_description.append(f"**Matched Alias:** {detail['matching_alias']}")
-        
-        match_description.append(f"**All Aliases:** {', '.join(detail['aliases'])}")
-        
+    # Reload pen aliases if requested
+    if data_type.lower() in ["all", "aliases"]:
+        success, message = reload_pen_aliases_from_file()
         embed.add_field(
-            name=f"{i}. {detail['formal_name']}",
-            value="\n".join(match_description),
+            name="Pen Aliases Reload",
+            value=f"{'✅' if success else '❌'} {message}",
             inline=False
         )
     
-    embed.set_footer(text="This command helps diagnose matching issues and shows how the search algorithm works")
-    
-    await interaction.followup.send(embed=embed)
-
-@bot.tree.command(name="fix_lamy_dialog", description="Fix the Lamy Dialog entry in the database")
-async def fix_lamy_dialog(interaction: discord.Interaction):
-    """Fix the Lamy Dialog entry specifically."""
-    await interaction.response.defer()
-    
-    # First check if it exists
-    has_lamy = False
-    for key in pen_names_map._one_to_many.keys():
-        if key.lower() == "lamy dialog":
-            has_lamy = True
-            print(f"Found existing Lamy Dialog as '{key}'")
-            break
-    
-    # Force remove any existing entry to clean up
-    if has_lamy:
-        for key in list(pen_names_map._one_to_many.keys()):
-            if key.lower() == "lamy dialog":
-                # Remove from one-to-many
-                aliases = list(pen_names_map._one_to_many[key])
-                del pen_names_map._one_to_many[key]
-                # Remove from many-to-one
-                for alias in aliases:
-                    if alias in pen_names_map._many_to_one:
-                        del pen_names_map._many_to_one[alias]
-                print(f"Removed existing Lamy Dialog entry: '{key}' with aliases {aliases}")
-    
-    # Now add a fresh entry
-    formal_name = "Lamy Dialog"
-    aliases = ["dialog", "dialog 3", "dialog cc", "lamy dialog"]
-    
-    # Add to map
-    for alias in aliases:
-        pen_names_map.add(formal_name, alias)
-    
-    # Save to file - using functions we already imported at the top
-    save_pen_aliases_to_file(pen_names_map, get_aliases_file_path())
-    
-    # Validate the map
-    issues_fixed = pen_names_map.validate()
-    if issues_fixed:
-        print(f"Fixed {len(issues_fixed)} issues after adding Lamy Dialog")
-    
-    # Check if it was added
-    if "Lamy Dialog" in pen_names_map._one_to_many:
-        embed = discord.Embed(
-            title="✅ Fixed Lamy Dialog",
-            description="Successfully added/fixed the Lamy Dialog entry",
-            color=discord.Color.green()
-        )
-        
-        actual_aliases = list(pen_names_map.get_values("Lamy Dialog"))
+    # Reload monitoring list if requested
+    if data_type.lower() in ["all", "monitoring"]:
+        success, message = reload_monitoring_from_file()
         embed.add_field(
-            name="Lamy Dialog Aliases",
-            value=', '.join(actual_aliases),
+            name="Monitoring List Reload",
+            value=f"{'✅' if success else '❌'} {message}",
             inline=False
         )
-        
-        # Count all pens
-        all_pens = list(pen_names_map._one_to_many.keys())
-        embed.add_field(
-            name="Database Status",
-            value=f"{len(all_pens)} pens in database",
-            inline=False
-        )
-    else:
-        embed = discord.Embed(
-            title="❌ Fix Failed",
-            description="Could not add Lamy Dialog to the database",
-            color=discord.Color.red()
-        )
-    
-    await interaction.followup.send(embed=embed)
-
-@bot.tree.command(name="check_map", description="Check the pen map for consistency issues")
-async def check_map(interaction: discord.Interaction):
-    """Check and repair the pen map for consistency."""
-    await interaction.response.defer()
-    
-    # Force validation of the map
-    issues_fixed = pen_names_map.validate()
-    
-    # Check for Lamy Dialog specifically
-    has_lamy = False
-    for key in pen_names_map._one_to_many.keys():
-        if key.lower() == "lamy dialog":
-            has_lamy = True
-            lamy_key = key
-            break
-            
-    if issues_fixed:
-        embed = discord.Embed(
-            title="🔧 Map Repaired",
-            description=f"Fixed {len(issues_fixed)} consistency issues in the pen map",
-            color=discord.Color.green()
-        )
-        
-        # Show some of the fixes
-        fixes_text = "\n".join([f"• {issue}" for issue in issues_fixed[:5]])
-        if len(issues_fixed) > 5:
-            fixes_text += f"\n... and {len(issues_fixed) - 5} more"
-            
-        embed.add_field(
-            name="Issues Fixed",
-            value=fixes_text,
-            inline=False
-        )
-    else:
-        embed = discord.Embed(
-            title="✅ Map Consistency Check",
-            description="The pen map is consistent with no issues found",
-            color=discord.Color.green()
-        )
-    
-    # Map statistics
-    embed.add_field(
-        name="Map Statistics",
-        value=f"• Formal pen names: {len(pen_names_map._one_to_many)}\n• Total aliases: {len(pen_names_map._many_to_one)}",
-        inline=False
-    )
-    
-    # Lamy Dialog check
-    if has_lamy:
-        lamy_aliases = list(pen_names_map.get_values(lamy_key))
-        embed.add_field(
-            name="Lamy Dialog Check",
-            value=f"✅ Present as '{lamy_key}' with {len(lamy_aliases)} aliases: {', '.join(lamy_aliases)}",
-            inline=False
-        )
-    else:
-        embed.add_field(
-            name="Lamy Dialog Check",
-            value="❌ Not found in the map",
-            inline=False
-        )
-        
-    await interaction.followup.send(embed=embed)
-
-@bot.tree.command(name="repair_database", description="Repair the post database to fix counter inconsistencies")
-async def repair_database_command(interaction: discord.Interaction):
-    """Repair the post database to fix any inconsistencies."""
-    await interaction.response.defer()
-    
-    # Run the repair function
-    report = repair_database()
-    
-    # Create an embed with the results
-    embed = discord.Embed(
-        title="🔧 Database Repair Results",
-        color=discord.Color.blue()
-    )
-    
-    # Original state
-    embed.add_field(
-        name="📊 Original State",
-        value=f"**Lifetime Posts:** {report['original_lifetime']}\n"
-              f"**Recent Posts:** {report['original_recent']}",
-        inline=True
-    )
-    
-    # New state
-    embed.add_field(
-        name="✅ New State",
-        value=f"**Lifetime Posts:** {report['new_lifetime']}\n"
-              f"**Recent Posts:** {report['new_recent']}",
-        inline=True
-    )
-    
-    # Changes made
-    changes = []
-    if report["fixed_lifetime_count"]:
-        changes.append("✓ Fixed inconsistent lifetime count")
-    if report["fixed_post_order"]:
-        changes.append("✓ Fixed post order list")
-    if report["removed_duplicates"] > 0:
-        changes.append(f"✓ Removed {report['removed_duplicates']} duplicate entries")
-    if "error" in report:
-        changes.append(f"❌ Error occurred: {report['error']}")
-    if not changes:
-        changes.append("✓ No issues found, database is healthy")
-        
-    embed.add_field(
-        name="🔍 Changes Made",
-        value="\n".join(changes),
-        inline=False
-    )
     
     await interaction.followup.send(embed=embed)
 
 async def run_discord_bot(reddit_client):
     """Initialize and run the Discord bot with Reddit monitoring."""
-    bot.set_reddit_client(reddit_client)
-    await bot.start(DISCORD_TOKEN) 
+    try:
+        print("Starting Discord bot...")
+        bot.set_reddit_client(reddit_client)
+        print("Discord initialization completed, connecting to Discord API...")
+        await bot.start(DISCORD_TOKEN)
+    except Exception as e:
+        print(f"Discord bot error: {e}") 
