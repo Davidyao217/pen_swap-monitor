@@ -1,6 +1,6 @@
 import re
 from thefuzz import fuzz
-from typing import List # Import List for type hinting
+from typing import List, Tuple, Dict, Set, Optional, Any # Import all needed typing classes
 from datetime import datetime # Ensure datetime is imported
 from collections import defaultdict
 import os
@@ -11,7 +11,7 @@ import shutil
 # File operation lock to prevent race conditions
 _file_lock = threading.Lock()
 
-def validate_pen_name_input(name: str, max_length: int = 100) -> tuple[bool, str]:
+def validate_pen_name_input(name: str, max_length: int = 100) -> Tuple[bool, str]:
     """
     Validate pen name input from users.
     
@@ -38,7 +38,7 @@ def validate_pen_name_input(name: str, max_length: int = 100) -> tuple[bool, str
     
     return True, ""
 
-def validate_aliases_input(aliases_str: str, max_aliases: int = 20, max_alias_length: int = 50) -> tuple[bool, str, List[str]]:
+def validate_aliases_input(aliases_str: str, max_aliases: int = 20, max_alias_length: int = 50) -> Tuple[bool, str, List[str]]:
     """
     Validate and parse aliases input from users.
     
@@ -1000,7 +1000,7 @@ def add_aliases_to_pen(formal_name: str, new_aliases: List[str]):
     save_pen_aliases_to_file(pen_names_map, get_aliases_file_path())
     print(f"✅ Added aliases to {formal_name}: {', '.join(new_aliases)}")
 
-def remove_aliases_from_pen(formal_name: str, aliases_to_remove: List[str]) -> tuple[List[str], List[str]]:
+def remove_aliases_from_pen(formal_name: str, aliases_to_remove: List[str]) -> Tuple[List[str], List[str]]:
     """
     Remove aliases from an existing pen and save to file.
     Returns (removed_aliases, not_found_aliases).
@@ -1027,7 +1027,7 @@ def remove_aliases_from_pen(formal_name: str, aliases_to_remove: List[str]) -> t
     
     return removed_aliases, not_found_aliases
 
-def remove_pen_completely(formal_name: str) -> tuple[bool, List[str]]:
+def remove_pen_completely(formal_name: str) -> Tuple[bool, List[str]]:
     """
     Remove a pen completely from the database (formal name and all aliases).
     Returns (success, removed_aliases_list).
@@ -1203,7 +1203,7 @@ def get_all_monitoring_search_terms() -> List[str]:
     
     return list(set(all_search_terms))  # Remove duplicates
 
-def reload_pen_aliases_from_file() -> tuple[bool, str]:
+def reload_pen_aliases_from_file() -> Tuple[bool, str]:
     """
     Reload pen aliases from the file, updating the global pen_names_map.
     Returns (success, message).
@@ -1235,7 +1235,7 @@ def reload_pen_aliases_from_file() -> tuple[bool, str]:
         print(error_msg)
         return False, error_msg
 
-def reload_monitoring_from_file() -> tuple[bool, str]:
+def reload_monitoring_from_file() -> Tuple[bool, str]:
     """
     Reload monitoring list from the file, updating the global _monitoring_list.
     Returns (success, message).
