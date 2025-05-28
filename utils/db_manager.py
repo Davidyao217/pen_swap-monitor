@@ -30,15 +30,16 @@ def is_post_seen(post_id: str) -> bool:
         # In case of error, assume post hasn't been seen to avoid missing posts
         return False
 
-def mark_post_as_seen(post_id: str) -> bool:
+def check_and_mark_post_as_seen(post_id: str) -> bool:
     """
-    Mark a post as seen and maintain the 100-post limit.
+    Atomically check if a post has been seen and mark it as seen if not.
+    This prevents race conditions where multiple threads could process the same post.
     
     Args:
-        post_id: The Reddit post ID to mark as seen
+        post_id: The Reddit post ID to check and mark
         
     Returns:
-        bool: True if successfully marked, False otherwise
+        bool: True if post was NOT seen before (and is now marked), False if already seen
     """
     if not post_id:
         return False
@@ -46,19 +47,18 @@ def mark_post_as_seen(post_id: str) -> bool:
     try:
         with _db_lock:
             with shelve.open(SEEN_POSTS_SHELVE_FILE, flag='c', writeback=True) as seen_db:
-                # Initialize or retrieve the ordered list of post IDs
+                # Check if already seen
+                if post_id in seen_db:
+                    return False  # Already seen
+                
+                # Initialize tracking structures if needed
                 if '__post_order__' not in seen_db:
                     seen_db['__post_order__'] = []
                 
-                # Initialize lifetime counter if it doesn't exist
                 if '__lifetime_count__' not in seen_db:
                     seen_db['__lifetime_count__'] = 0
 
                 post_order = seen_db['__post_order__']
-
-                # Check if post is already marked (avoid duplicates)
-                if post_id in seen_db:
-                    return True
 
                 # Add new post to the shelf and the ordered list
                 seen_db[post_id] = True
@@ -76,11 +76,10 @@ def mark_post_as_seen(post_id: str) -> bool:
                 # Update the ordered list in the shelf
                 seen_db['__post_order__'] = post_order
                 
-                # writeback=True ensures changes are automatically synced
-                return True
+                return True  # Successfully marked as new
                 
     except Exception as e:
-        print(f"Error marking post as seen: {e}")
+        print(f"Error in atomic check and mark: {e}")
         return False
 
 def get_seen_posts_count() -> int:
@@ -241,6 +240,59 @@ def repair_database() -> dict:
         print(f"Error repairing database: {e}")
         report["error"] = str(e)
         return report
+
+def mark_post_as_seen(post_id: str) -> bool:
+    """
+    Mark a post as seen and maintain the 100-post limit.
+    
+    Args:
+        post_id: The Reddit post ID to mark as seen
+        
+    Returns:
+        bool: True if successfully marked, False otherwise
+    """
+    if not post_id:
+        return False
+        
+    try:
+        with _db_lock:
+            with shelve.open(SEEN_POSTS_SHELVE_FILE, flag='c', writeback=True) as seen_db:
+                # Initialize or retrieve the ordered list of post IDs
+                if '__post_order__' not in seen_db:
+                    seen_db['__post_order__'] = []
+                
+                # Initialize lifetime counter if it doesn't exist
+                if '__lifetime_count__' not in seen_db:
+                    seen_db['__lifetime_count__'] = 0
+
+                post_order = seen_db['__post_order__']
+
+                # Check if post is already marked (avoid duplicates)
+                if post_id in seen_db:
+                    return True
+
+                # Add new post to the shelf and the ordered list
+                seen_db[post_id] = True
+                post_order.append(post_id)
+                
+                # Increment lifetime counter for new posts
+                seen_db['__lifetime_count__'] += 1
+
+                # If the list exceeds 100, remove the oldest
+                if len(post_order) > 100:
+                    oldest_post_id = post_order.pop(0)  # Remove from the beginning
+                    if oldest_post_id in seen_db:
+                        del seen_db[oldest_post_id]
+                
+                # Update the ordered list in the shelf
+                seen_db['__post_order__'] = post_order
+                
+                # writeback=True ensures changes are automatically synced
+                return True
+                
+    except Exception as e:
+        print(f"Error marking post as seen: {e}")
+        return False
 
 # Remove the old global database management functions
 # keeping this comment for reference of what was removed:

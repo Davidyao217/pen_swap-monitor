@@ -11,7 +11,7 @@ from config import (
     QUERY
 )
 from utils.text_utils import check_post_for_pen_models, format_discord_message, get_all_monitoring_search_terms
-from utils.db_manager import is_post_seen, mark_post_as_seen
+from utils.db_manager import is_post_seen, mark_post_as_seen, check_and_mark_post_as_seen
 
 # ------------------------------------------------------------------
 # Reddit Client Initialization
@@ -120,16 +120,12 @@ async def fetch_and_send_new_posts(channel, reddit):
             print(f"Processing post {posts_processed}: https://www.reddit.com{submission.permalink}")
             print("-" * 100)
 
-            # Skip already processed posts
-            if is_post_seen(submission.id):
+            # Use atomic check-and-mark to prevent race conditions with duplicate posts
+            if not check_and_mark_post_as_seen(submission.id):
                 print(f"Skipping already seen post: {submission.id} - {submission.title}")
                 continue
             
-            # Mark as seen (this will prevent reprocessing even if we fail later)
-            if not mark_post_as_seen(submission.id):
-                print(f"⚠️ Failed to mark post as seen: {submission.id}")
-            else:
-                print(f"✅ Marked post as seen: {submission.id}")
+            print(f"✅ New post marked as seen: {submission.id}")
 
             # Combine title and body for analysis
             combined_text = f"{submission.title} {submission.selftext}"

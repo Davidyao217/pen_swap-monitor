@@ -833,6 +833,7 @@ async def force_search(interaction: discord.Interaction, limit: int = 10):
     
     # Load required modules
     load_text_utils()
+    load_db_manager()  # Ensure DB manager is loaded for get_seen_posts_count
     
     # Validate limit
     if limit < 1 or limit > 50:
